@@ -83,6 +83,9 @@
 #include <gtsam/gnssNavigation/PseudorangeFactor_spp.h>
 #include <gtsam/robustModels/switchVariableLinear.h>
 #include <gtsam/robustModels/PseudorangeSwitchFactor.h>
+#include <gtsam/gnssNavigation/IMUFactor_linear.h>
+#include <gtsam/gnssNavigation/MotionModel_factor.h>
+
 
 #include <tf/tf.h>
 #include <tf/transform_broadcaster.h>
@@ -114,6 +117,7 @@ bool enable_Pr_factor = 1; //enable pseudorange factor
 bool enbale_CVM_factor = 1; // enable constant velocity factor
 bool enbale_SCP_factor = 0; // enable switchable constraint pseudorange factor
 bool enable_GNSS_loose_factor = 0; // enbale GNSS loose factor (use WLS solution)
+bool enable_IMU_LINEAR_factor = 1; // enable imu linear factor (similar to ekf)
 
 double _vx = 0, _vy = 0, _vz = 0; // 
 clock_t old_clock = clock();
@@ -1301,7 +1305,7 @@ int main(int argc, char* argv[])
   // Assemble prior noise model and add it the graph.
   noiseModel::Diagonal::shared_ptr pose_noise_model = noiseModel::Diagonal::Sigmas((Vector(6) << 0.3, 0.3, 0.3, 5, 5, 5).finished()); // rad,rad,rad,m, m, m
   noiseModel::Diagonal::shared_ptr velocity_noise_model = noiseModel::Isotropic::Sigma(3,1); // 0.1 m/s
-  noiseModel::Diagonal::shared_ptr bias_noise_model = noiseModel::Isotropic::Sigma(6,1e-3);
+  noiseModel::Diagonal::shared_ptr bias_noise_model = noiseModel::Isotropic::Sigma(6,0.1);
   noiseModel::Diagonal::shared_ptr cb_noise_model = noiseModel::Diagonal::Sigmas((Vector(2) << 10, 10).finished()); //  m, m noise model for clock noise
   noiseModel::Diagonal::shared_ptr sw_noise_model = noiseModel::Diagonal::Sigmas((Vector(1) << 0.1).finished()); //  m, m noise model for clock noise
 
@@ -1386,11 +1390,12 @@ int main(int argc, char* argv[])
                       // exactly the same, so keeping this for simplicity.
 
   // All priors have been set up, now iterate through the data file.
-  ros::Rate rate(1000); // usually ok when rate(10)
+  ros::Rate rate(20); // usually ok when rate(10)
   while (ros::ok()) { //ros::ok()
     ros::spinOnce();
     rate.sleep();
     GNSS_odom_pub.publish(odom_track_ENU);
+    // correction_count++;
     if ((imu_up == 1) && ( (online_cal_success ==1) || (offline_cal_success ==1))) { // IMU measurement obtained and do pre-integration
       // cout<<"imu_up-> "<<imu_up<<endl;
       Eigen::Matrix<double,6,1> imu = Eigen::Matrix<double,6,1>::Zero();
@@ -1408,18 +1413,15 @@ int main(int argc, char* argv[])
       double delta_clock_imu = float(clock() - old_imu_clock) / CLOCKS_PER_SEC;
       old_imu_clock = clock();
       // Adding the IMU preintegration.
-        if(prediction_pre_t == 0)
-      {
-        prediction_pre_t = imu_track.header.stamp.toSec();
-      }
-
-      double delta_t = imu_track.header.stamp.toSec() -  prediction_pre_t;
+        
       // cout<<"delta_t ->" <<delta_t<<endl;
       imu_preintegrated_->integrateMeasurement(imu.head<3>(), imu.tail<3>(), dt);
-      prediction_pre_t = imu_track.header.stamp.toSec();  
+      
 
       // cout<<"imu_track.linear_acceleration.z ->" <<imu_track.linear_acceleration.z <<  "  delta_clock_imu-> " << delta_clock_imu<<endl;
       // imu_preintegrated_->integrateMeasurement(imu.head<3>(), imu.tail<3>(), delta_t);
+
+
       imu_up = 0;
 
     } 
@@ -1478,6 +1480,27 @@ int main(int argc, char* argv[])
       
 #endif
 
+       if(enable_IMU_LINEAR_factor)
+      {
+          if(prediction_pre_t == 0)
+        {
+          prediction_pre_t = imu_track.header.stamp.toSec();
+        }
+
+        double delta_t = imu_track.header.stamp.toSec() -  prediction_pre_t;
+        if(delta_t < 0.001) delta_t = 0.1;
+        // cout<<"delta_t-> "<<delta_t<<endl;
+        Point3 acce_measure(imu_track.linear_acceleration.x, imu_track.linear_acceleration.y, imu_track.linear_acceleration.z);
+        // noiseModel::Diagonal::shared_ptr bias_noise_model = noiseModel::Isotropic::Sigma(6,1e-3);
+        if(correction_count > 2)
+        {
+          IMUFactor_linear IMUFactor_linear_factor(V(correction_count - 1 ), V(correction_count),B(correction_count), acce_measure,  delta_t, noiseModel::Isotropic::Sigma(3,1)); // noiseModel::Isotropic::Sigma(3,1)
+          graph->add(IMUFactor_linear_factor);
+        }
+        prediction_pre_t = imu_track.header.stamp.toSec();  
+        
+      }
+
       //noiseModel::Isotropic::Sigma(3,0.01)
       // noiseModel::Diagonal::shared_ptr correction_noise = noiseModel::Isotropic::Sigma(3, 0.1); // 3,0.01   gps(2) good and the performance is improved
       // noiseModel::Diagonal::shared_ptr correction_noise = noiseModel::Isotropic::Sigma(3, 0.1); // 3,0.01   gps(2)
@@ -1493,6 +1516,8 @@ int main(int argc, char* argv[])
         graph->add(gps_factor);
       }
 
+     
+
       /************add CVM factor************/
       if(enbale_CVM_factor) // use constant velocity model
       {
@@ -1505,8 +1530,8 @@ int main(int argc, char* argv[])
         Pose3 between_pose(between_rotation, between_point);
         Vector3 between_velocity(0.1, 0.1, 0.1);
         noiseModel::Diagonal::shared_ptr between_pose_noise_model = noiseModel::Diagonal::Sigmas((Vector(6) << 0.1, 0.1, 0.1, 5, 5, 5).finished()); // rad,rad,rad,m, m, m
-        noiseModel::Diagonal::shared_ptr between_velocity_noise_model = noiseModel::Isotropic::Sigma(3,1); // 0.1 m/s
-        noiseModel::Diagonal::shared_ptr between_bias_noise_model = noiseModel::Isotropic::Sigma(6,1e-3);
+        noiseModel::Diagonal::shared_ptr between_velocity_noise_model = noiseModel::Isotropic::Sigma(3,5); // 0.1 m/s
+        noiseModel::Diagonal::shared_ptr between_bias_noise_model = noiseModel::Isotropic::Sigma(6,0.1);
         noiseModel::Diagonal::shared_ptr between_cb_noise_model = noiseModel::Diagonal::Sigmas((Vector(2) << 10, 10).finished()); //  m, m noise model for clock noise
         graph->add(BetweenFactor<Pose3>(X(correction_count-1), 
                                                         X(correction_count  ), 
@@ -1518,7 +1543,13 @@ int main(int argc, char* argv[])
         graph->add(BetweenFactor<imuBias::ConstantBias>(B(correction_count-1), 
                                                       B(correction_count  ), 
                                                       zero_bias, bias_noise_model));
+
+        MotionModel_factor MotionModel_factor_(X(correction_count-1), 
+                                                        X(correction_count  ),V(correction_count), delta_clock_CVM, noiseModel::Isotropic::Sigma(3,5));
+        graph->add(MotionModel_factor_);
       }
+
+      
 
     /***************add pseudorange factor****************/
       for(int i =0; i < _GNSS_data.GNSS_Raws.size(); i++) // 
@@ -1553,8 +1584,10 @@ int main(int argc, char* argv[])
       {
         PseudorangeFactor_spp pseudorange_Factor_spp(X(correction_count), C(correction_count),range, satXYZ, sv_prn, nomXYZ, noiseModel::Diagonal::Sigmas( (gtsam::Vector(1) << SV_weight).finished()));
         graph->add(pseudorange_Factor_spp);
-        std::cout<< "pseudorange weighting-> "<< SV_weight << std::endl;
-      }
+        // std::cout<< "pseudorange weighting-> "<< SV_weight << std::endl;
+
+       
+      } // Matrix33::Identity(3,3) * pow(accel_noise_sigma,2)
       
        if(enbale_SCP_factor)
       {
@@ -1573,7 +1606,11 @@ int main(int argc, char* argv[])
       //                                                 zero_cb, cb_noise_model));
       
       
-      
+      if(enbale_SCP_factor)
+      {
+        graph->add(PriorFactor<SwitchVariableLinear>(S(correction_count), sw_prior,sw_noise_model)); // add prior for switchable factor
+        // initial_values.insert(S(correction_count),SwitchVariableLinear(sw_prior)); // switchable factor
+      }
       
       // Now optimize and compare results.
       prop_state = imu_preintegrated_->predict(prev_state, prev_bias);
@@ -1582,13 +1619,7 @@ int main(int argc, char* argv[])
       initial_values.insert(B(correction_count), prev_bias);
       initial_values.insert(C(correction_count), prev_cb); // clock bias 
       initial_values.insert(S(correction_count),SwitchVariableLinear(sw_prior)); // switchable factor
-      if(enbale_SCP_factor)
-      {
-        graph->add(PriorFactor<SwitchVariableLinear>(S(correction_count), sw_prior,sw_noise_model)); // add prior for switchable factor
-        // initial_values.insert(S(correction_count),SwitchVariableLinear(sw_prior)); // switchable factor
-      }
       
-
       // GaussNewtonOptimizer optimizer(*graph, initial_values);
       // const clock_t begin_time = clock();
       // Values result = optimizer.optimize();
@@ -1622,7 +1653,8 @@ int main(int argc, char* argv[])
 
       prev_cb = result.at<Point2>(C(correction_count));
       double SC = (result.at<SwitchVariableLinear>(S(correction_count))).value();
-      std::cout<< "prev_cb-> " << prev_cb << "  S(correction_count)-> "<< SC << std::endl;
+      Point3 Vel = prev_state.velocity();
+      std::cout<< "prev_cb-> " << prev_cb << "  S(correction_count)-> "<< SC << "   Vel-> "<< Vel << "  prev_bias.accelerometer()-> "<<prev_bias.accelerometer()<< std::endl;
 
       // Reset the preintegration object.
       imu_preintegrated_->resetIntegrationAndSetBias(prev_bias);
@@ -1634,7 +1666,12 @@ int main(int argc, char* argv[])
       double delta_clock = float(clock() - old_clock) / CLOCKS_PER_SEC;
       _vx = ( gtsam_position.x() - result.at<Pose3>(X(correction_count - 1)).translation().x() ) / delta_clock;
       _vy = ( gtsam_position.y() - result.at<Pose3>(X(correction_count - 1)).translation().y() ) / delta_clock;
-      _vx = ( gtsam_position.z() - result.at<Pose3>(X(correction_count - 1)).translation().z() ) / delta_clock;
+      _vz = ( gtsam_position.z() - result.at<Pose3>(X(correction_count - 1)).translation().z() ) / delta_clock;
+
+      // _vx = prev_state.velocity().x();
+      // _vy = prev_state.velocity().y();
+      // _vz = prev_state.velocity().z();
+
       old_clock = clock();
 
       Eigen::MatrixXd ecef_fg;
