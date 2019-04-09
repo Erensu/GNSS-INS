@@ -1528,7 +1528,7 @@ int main(int argc, char* argv[])
         // Point3 between_point(0.5, 0.5, 0.5);
         Point3 between_point(_vx * delta_clock_CVM, _vy * delta_clock_CVM, _vz * delta_clock_CVM);
         Pose3 between_pose(between_rotation, between_point);
-        Vector3 between_velocity(0.1, 0.1, 0.1);
+        Vector3 between_velocity(0.5, 0.5, 0.5);
         noiseModel::Diagonal::shared_ptr between_pose_noise_model = noiseModel::Diagonal::Sigmas((Vector(6) << 0.1, 0.1, 0.1, 5, 5, 5).finished()); // rad,rad,rad,m, m, m
         noiseModel::Diagonal::shared_ptr between_velocity_noise_model = noiseModel::Isotropic::Sigma(3,5); // 0.1 m/s
         noiseModel::Diagonal::shared_ptr between_bias_noise_model = noiseModel::Isotropic::Sigma(6,0.1);
@@ -1545,7 +1545,7 @@ int main(int argc, char* argv[])
                                                       zero_bias, bias_noise_model));
 
         MotionModel_factor MotionModel_factor_(X(correction_count-1), 
-                                                        X(correction_count  ),V(correction_count), delta_clock_CVM, noiseModel::Isotropic::Sigma(3,5));
+                                                        X(correction_count  ),V(correction_count - 1), delta_clock_CVM, noiseModel::Isotropic::Sigma(3,5));
         graph->add(MotionModel_factor_);
       }
 
