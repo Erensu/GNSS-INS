@@ -174,7 +174,7 @@ public:
   bool use_online_imu_cal = 1;
   bool online_cal_success = 0;
   vector<sensor_msgs::Imu> imu_queue;
-  int imu_queue_size = 5; // 2000
+  int imu_queue_size = 2; // 2000
 
   // EKF related parameters
   Eigen::MatrixXd imu_noise_matrix;
@@ -201,7 +201,7 @@ public:
   ekf_tight(bool state)
   {
     std::cout<<"----------------constructor-----------------"<<std::endl;
-    imu_sub = nh.subscribe("/imu/data", 50, &ekf_tight::imu_callback,this);
+    imu_sub = nh.subscribe("/imu_rt", 50, &ekf_tight::imu_callback,this);
     span_BP_sub =nh.subscribe("/novatel_data/bestpos", 50, &ekf_tight::span_bp_callback,this);
     gps_sub = nh.subscribe("/GNSS_", 50, &ekf_tight::GNSS_raw_callback,this);
 
@@ -267,7 +267,7 @@ public:
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0,
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3;
 
-    Q_matrix = Q_matrix * 10;
+    Q_matrix = Q_matrix * 0.1;
 
     sigma_matrix.resize(11,11);
     sigma_matrix << 3.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

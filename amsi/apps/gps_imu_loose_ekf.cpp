@@ -168,12 +168,12 @@ public:
   bool use_online_imu_cal = 1;
   bool online_cal_success = 0;
   vector<sensor_msgs::Imu> imu_queue;
-  int imu_queue_size = 5;
+  int imu_queue_size = 2;
 
   // EKF related parameters
   Eigen::MatrixXd imu_noise_matrix;
 
-  Eigen::MatrixXd Q_matrix, G_matrix, sigma_matrix, R_matrix, K_matrix, H_matrix;
+  Eigen::MatrixXd Q_matrix, G_matrix, sigma_matrix, R_matrix, K_matrix, H_matrix, orientation_matrix, acceleration_rotation;;
  
   VectorXd ekf_state; // state:  px, py, pz, vx, vy, vz, bax, bzy, baz
   VectorXd ekf_u_t; // ax, ay, az
@@ -191,6 +191,8 @@ public:
 
   geometry_msgs::Point32 imu_v, span_v; 
 
+  double x,y,z,w;
+
 
 public:
   /**
@@ -205,7 +207,7 @@ public:
     gps_sub = nh.subscribe("/ublox_gps_node/fix", 50, &ekf_loose::ubloxFix_callback,this);  // subscribe the result from WLS
     span_BP_sub =nh.subscribe("/novatel_data/bestpos", 50, &ekf_loose::span_bp_callback,this);
 
-    gps_raw_sub = nh.subscribe("/GNSS_CV", 50, &ekf_loose::GNSS_raw_callback,this);
+    gps_raw_sub = nh.subscribe("/GNSS_", 50, &ekf_loose::GNSS_raw_callback,this);
 
     heading_sub = nh.subscribe("/novatel_data/inspvax", 500
       , &ekf_loose::heading_callback, this); // heading from span-cpt 
@@ -266,7 +268,7 @@ void heading_callback(const novatel_msgs::INSPVAXConstPtr& msg) // subscribe the
                 0, 0, 0, 0, 0, 0, 0.05, 0, 0,
                 0, 0, 0, 0, 0, 0, 0, 0.05, 0,
                 0, 0, 0, 0, 0, 0, 0, 0, 0.05; 
-    Q_matrix = Q_matrix * 1;
+    Q_matrix = Q_matrix * 0.01;
 
     sigma_matrix.resize(9,9);
     sigma_matrix << 3.0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -304,17 +306,17 @@ void heading_callback(const novatel_msgs::INSPVAXConstPtr& msg) // subscribe the
     double g_ = 9.8;
     // std::cout << " IMU data call back" << input->angular_velocity.x << std::endl;
     imu_track = * input;
-    imu_track.linear_acceleration.x = imu_track.linear_acceleration.x * g_;
-    imu_track.linear_acceleration.y = imu_track.linear_acceleration.y * g_;
-    imu_track.linear_acceleration.z = imu_track.linear_acceleration.z * g_;
+    // imu_track.linear_acceleration.x = imu_track.linear_acceleration.x * g_;
+    // imu_track.linear_acceleration.y = imu_track.linear_acceleration.y * g_;
+    // imu_track.linear_acceleration.z = imu_track.linear_acceleration.z * g_;
 
-    double imu_roll, imu_pitch, imu_yaw;
-    tf::Quaternion imu_orientation;
-    tf::quaternionMsgToTF(input->orientation, imu_orientation);
-    tf::Matrix3x3(imu_orientation).getRPY(imu_roll, imu_pitch, imu_yaw);
-    imu_roll = imu_roll * 180.0 / pi;
-    imu_pitch = imu_pitch * 180.0 / pi;
-    imu_yaw = imu_yaw * 180.0 / pi;
+    // double imu_roll, imu_pitch, imu_yaw;
+    // tf::Quaternion imu_orientation;
+    // tf::quaternionMsgToTF(input->orientation, imu_orientation);
+    // tf::Matrix3x3(imu_orientation).getRPY(imu_roll, imu_pitch, imu_yaw);
+    // imu_roll = imu_roll * 180.0 / pi;
+    // imu_pitch = imu_pitch * 180.0 / pi;
+    // imu_yaw = imu_yaw * 180.0 / pi;
     
     // std::cout<< "    imu_roll -> " <<imu_roll << "    imu_pitch-> "<< imu_pitch << "   imu_yaw-> " << imu_yaw << std::endl;
 
@@ -333,6 +335,37 @@ void heading_callback(const novatel_msgs::INSPVAXConstPtr& msg) // subscribe the
     // imu_track.linear_acceleration.y = lineAcc_local(1,0);
     // imu_track.linear_acceleration.z = lineAcc_local(2,0);
     // std::cout<< "    imu_track.linear_acceleration.x -> " <<imu_track.linear_acceleration.x << "    imu_track.linear_acceleration.y-> " <<imu_track.linear_acceleration.y << std::endl;
+    
+
+
+    /************* transfer the IMU from body to local******************/
+    // x = imu_track.orientation.x;
+    // y = imu_track.orientation.y;
+    // z = imu_track.orientation.z;
+    // w = imu_track.orientation.w;
+
+    // double imu_roll, imu_pitch, imu_yaw;
+    // tf::Quaternion imu_orientation;
+    // tf::quaternionMsgToTF(input->orientation, imu_orientation);
+    // tf::Matrix3x3(imu_orientation).getRPY(imu_roll, imu_pitch, imu_yaw);
+    // cout<<"yaw : = " <<imu_yaw*(180/3.14)<<endl;
+    // // cout<<imu_track.orientation.x<<endl;
+    // cout<<"imu_track.linear_acceleration.x : = " <<endl<<imu_track.linear_acceleration.x<<endl;
+    
+    // Eigen::Quaterniond q(w,x,y,z);
+    // q.normalized();
+    // Eigen::Matrix3d rotation_matrix;
+    // rotation_matrix=q.toRotationMatrix();
+    // orientation_matrix.resize(3,1);
+    // orientation_matrix<<imu_track.linear_acceleration.x,
+    //                     imu_track.linear_acceleration.y,
+    //                     imu_track.linear_acceleration.z;
+    // acceleration_rotation = rotation_matrix.transpose() * orientation_matrix;
+
+    // cout<<"acceleration_rotation : = " <<endl<<acceleration_rotation<<endl;
+    // imu_track.linear_acceleration.x = acceleration_rotation(0,0);
+    // imu_track.linear_acceleration.y = acceleration_rotation(1,0);
+    // imu_track.linear_acceleration.z = acceleration_rotation(2,0);
 
 
     imu_queue.push_back(imu_track);
@@ -609,7 +642,7 @@ void heading_callback(const novatel_msgs::INSPVAXConstPtr& msg) // subscribe the
 
       if(1)
       {
-        bool use_CV_GNSS =1;
+        bool use_CV_GNSS =0;
         double psr_cov = cofactorMatrixCal_single_satellite(GNSS_data.GNSS_Raws[i].elevation, GNSS_data.GNSS_Raws[i].snr);
         if(use_CV_GNSS == 0)
         {
@@ -666,7 +699,7 @@ void heading_callback(const novatel_msgs::INSPVAXConstPtr& msg) // subscribe the
       double odom3_wz = imu_track.angular_velocity.z;
       // double odom3_wz = 0.0;
 
-      double odom3_vx_std = 10;
+      double odom3_vx_std = 5;
       double odom3_vy_std = 0.1;
       double odom3_vz_std = 0.1;
       
@@ -685,7 +718,7 @@ void heading_callback(const novatel_msgs::INSPVAXConstPtr& msg) // subscribe the
       //       imu_track.angular_velocity.x, imu_track.angular_velocity.y,imu_track.angular_velocity.z,
       //       imu_track.linear_acceleration_covariance[3], imu_track.linear_acceleration_covariance[4],imu_track.linear_acceleration_covariance[5],
       //       imu_track.linear_acceleration_covariance[6],imu_track.linear_acceleration_covariance[7],imu_track.linear_acceleration_covariance[8]); // generateData_gt3    not always span_ecef available at the first epoch
-
+      std::cout << std::setprecision(12);
       std::cout<<"span_ecef -> "<<span_ecef<<std::endl; 
     }
     Eigen::MatrixXd  eWLSSolutionECEF; // 5 unknowns with two clock bias variables

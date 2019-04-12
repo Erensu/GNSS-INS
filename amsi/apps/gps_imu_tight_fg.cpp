@@ -115,9 +115,9 @@ using symbol_shorthand::S; // switch factor
 bool enable_IMUPreintegration_factor = 0; // enable imu pre-integration factor 
 bool enable_Pr_factor = 1; //enable pseudorange factor
 bool enbale_CVM_factor = 1; // enable constant velocity factor
-bool enbale_SCP_factor = 0; // enable switchable constraint pseudorange factor
+bool enbale_SCP_factor = 1; // enable switchable constraint pseudorange factor
 bool enable_GNSS_loose_factor = 0; // enbale GNSS loose factor (use WLS solution)
-bool enable_IMU_LINEAR_factor = 1; // enable imu linear factor (similar to ekf)
+bool enable_IMU_LINEAR_factor = 0; // enable imu linear factor (similar to ekf)
 
 double _vx = 0, _vy = 0, _vz = 0; // 
 clock_t old_clock = clock();
@@ -162,6 +162,8 @@ nlosExclusion::GNSS_Raw_Array _GNSS_data; // save the GNSS data
 Point3 nomXYZ(-2418954.90428,5384679.60663,2407391.40139); // niutoujiao data
 // Point3 nomXYZ(-2417729.42895,5384849.60804,2408314.07879); // initial position : kowlontoon data
 // Point3 nomXYZ(0, 0, 0); // niutoujiao data
+// Point3 nomXYZ(-2419091.11542, 5385376.36368, 2405705.64485); // whomopo
+
 double prediction_pre_t=0;
 
 
@@ -367,48 +369,42 @@ double nstamp = 0;
 
 
      /****in the tightly coupled GNSS/INS integration, transfer imu from body to local frame***/
-    x = imu_track.orientation.x;
-    y = imu_track.orientation.y;
-    z = imu_track.orientation.z;
-    w = imu_track.orientation.w;
-    double imu_roll, imu_pitch, imu_yaw;
-    tf::Quaternion imu_orientation;
-    tf::quaternionMsgToTF(input->orientation, imu_orientation);
-    tf::Matrix3x3(imu_orientation).getRPY(imu_roll, imu_pitch, imu_yaw);
-    // cout<<"yaw : = " <<imu_yaw*(180/3.14)<<endl;
-    // cout<<imu_track.orientation.x<<endl;
-    // cout<<"imu_track.linear_acceleration.x : = " <<endl<<imu_track.linear_acceleration.x<<endl;
-    Eigen::Quaterniond q(w,x,y,z);
-    q.normalized();
-    Eigen::Matrix3d rotation_matrix;
-    rotation_matrix=q.toRotationMatrix();
+
+    Eigen::AngleAxisd rollAngle(0, Eigen::Vector3d::UnitZ());
+    Eigen::AngleAxisd yawAngle(90, Eigen::Vector3d::UnitY());
+    Eigen::AngleAxisd pitchAngle(0, Eigen::Vector3d::UnitX());
+
+    Eigen::Quaternion<double> q_rotation = rollAngle * yawAngle * pitchAngle;
+
+    Eigen::Matrix3d rotationMatrix = q_rotation.matrix();
+
     orientation_matrix.resize(3,1);
     orientation_matrix<<imu_track.linear_acceleration.x,
                         imu_track.linear_acceleration.y,
                         imu_track.linear_acceleration.z;
-    acceleration_rotation = rotation_matrix.transpose() * orientation_matrix;
+    acceleration_rotation = rotationMatrix.transpose() * orientation_matrix;
 
     // cout<<"acceleration_rotation : = " <<endl<<acceleration_rotation<<endl;
     imu_track.linear_acceleration.x = acceleration_rotation(0,0);
     imu_track.linear_acceleration.y = acceleration_rotation(1,0);
     imu_track.linear_acceleration.z = acceleration_rotation(2,0);
 
-    /****in the tightly coupled GNSS/INS integration, navigation frame is ECEF***/
-    if(originllh_span.rows() > 1)
-    {
-      double lon = (double)originllh_span(0) * D2R;
-      double lat = (double)originllh_span(1) * D2R;
+    // /****in the tightly coupled GNSS/INS integration, navigation frame is ECEF***/
+    // if(originllh_span.rows() > 1)
+    // {
+    //   double lon = (double)originllh_span(0) * D2R;
+    //   double lat = (double)originllh_span(1) * D2R;
 
 
-      double e = imu_track.linear_acceleration.x; // acc in enu 
-      double n = imu_track.linear_acceleration.y;
-      double u = imu_track.linear_acceleration.z;
+    //   double e = imu_track.linear_acceleration.x; // acc in enu 
+    //   double n = imu_track.linear_acceleration.y;
+    //   double u = imu_track.linear_acceleration.z;
 
 
-      imu_track.linear_acceleration.x = 0 - sin(lon) * e - cos(lon) * sin(lat) * n + cos(lon) * cos(lat) * u; // transfrom the acc from enu to ecef
-      imu_track.linear_acceleration.y = 0 + cos(lon) * e - sin(lon) * sin(lat) * n + cos(lat) * sin(lon) * u;
-      imu_track.linear_acceleration.z = 0 + cos(lat) * n + sin(lat) * u;
-    }
+    //   imu_track.linear_acceleration.x = 0 - sin(lon) * e - cos(lon) * sin(lat) * n + cos(lon) * cos(lat) * u; // transfrom the acc from enu to ecef
+    //   imu_track.linear_acceleration.y = 0 + cos(lon) * e - sin(lon) * sin(lat) * n + cos(lat) * sin(lon) * u;
+    //   imu_track.linear_acceleration.z = 0 + cos(lat) * n + sin(lat) * u;
+    // }
 
     imu_up =1;
     imu_co++;
@@ -473,6 +469,7 @@ void ubloxFix_callback(const sensor_msgs::NavSatFixConstPtr& fix_msg)
 
     if(ini_navf.latitude == NULL)
       {
+
         ini_navf = navfix_;
         std::cout<<"ini_navf.header  -> "<<ini_navf.header<<std::endl;
         originllh.resize(3, 1);
@@ -1180,6 +1177,7 @@ void ubloxFix_callback(const sensor_msgs::NavSatFixConstPtr& fix_msg)
 
     if(ini_navf_span.latitude == NULL)
       {
+        std::cout << std::setprecision(12);
         ini_navf_span = navfix_;
         std::cout<<"ini_navf_span.header  -> "<<ini_navf_span.header<<std::endl;
         originllh_span.resize(3, 1);
@@ -1292,6 +1290,7 @@ int main(int argc, char* argv[])
 
   Values initial_values;
   int correction_count = 0;
+  int switchable_count = 0;
   initial_values.insert(X(correction_count), prior_pose);
   initial_values.insert(V(correction_count), prior_velocity);
   initial_values.insert(B(correction_count), prior_imu_bias);  
@@ -1343,11 +1342,17 @@ int main(int argc, char* argv[])
   // double accel_noise_sigma = 0.03924;
   // double gyro_noise_sigma = 0.0205689024915;
 
-  double accel_noise_sigma = 0.1624;
-  double gyro_noise_sigma = 0.205689024915;
+  // double accel_noise_sigma = 0.1624;
+  // double gyro_noise_sigma = 0.205689024915;
 
-  double accel_bias_rw_sigma = 0.1905;
-  double gyro_bias_rw_sigma = 0.1454441043;
+  // double accel_bias_rw_sigma = 0.1905;
+  // double gyro_bias_rw_sigma = 0.1454441043;
+
+    // We use the sensor specs to build the noise model for the IMU factor.
+  double accel_noise_sigma = 0.0003924;
+  double gyro_noise_sigma = 0.000205689024915;
+  double accel_bias_rw_sigma = 0.004905;
+  double gyro_bias_rw_sigma = 0.000001454441043;
 
   Matrix33 measured_acc_cov = Matrix33::Identity(3,3) * pow(accel_noise_sigma,2);
   Matrix33 measured_omega_cov = Matrix33::Identity(3,3) * pow(gyro_noise_sigma,2);
@@ -1390,7 +1395,7 @@ int main(int argc, char* argv[])
                       // exactly the same, so keeping this for simplicity.
 
   // All priors have been set up, now iterate through the data file.
-  ros::Rate rate(20); // usually ok when rate(10)
+  ros::Rate rate(10); // usually ok when rate(10) 20 
   while (ros::ok()) { //ros::ok()
     ros::spinOnce();
     rate.sleep();
@@ -1407,7 +1412,7 @@ int main(int argc, char* argv[])
       imu(3) = imu_track.angular_velocity.x ;
       imu(4) = imu_track.angular_velocity.y ;
       imu(5) = imu_track.angular_velocity.z ;
-      
+       
 
       // Adding the IMU preintegration.
       double delta_clock_imu = float(clock() - old_imu_clock) / CLOCKS_PER_SEC;
@@ -1528,7 +1533,7 @@ int main(int argc, char* argv[])
         // Point3 between_point(0.5, 0.5, 0.5);
         Point3 between_point(_vx * delta_clock_CVM, _vy * delta_clock_CVM, _vz * delta_clock_CVM);
         Pose3 between_pose(between_rotation, between_point);
-        Vector3 between_velocity(0.5, 0.5, 0.5);
+        Vector3 between_velocity(0.1, 0.1, 0.1);
         noiseModel::Diagonal::shared_ptr between_pose_noise_model = noiseModel::Diagonal::Sigmas((Vector(6) << 0.1, 0.1, 0.1, 5, 5, 5).finished()); // rad,rad,rad,m, m, m
         noiseModel::Diagonal::shared_ptr between_velocity_noise_model = noiseModel::Isotropic::Sigma(3,5); // 0.1 m/s
         noiseModel::Diagonal::shared_ptr between_bias_noise_model = noiseModel::Isotropic::Sigma(6,0.1);
@@ -1540,12 +1545,13 @@ int main(int argc, char* argv[])
         graph->add(BetweenFactor<Vector3>(V(correction_count-1), 
                                                         V(correction_count  ), 
                                                         between_velocity, between_velocity_noise_model));
+        imuBias::ConstantBias small_bias(Vector3(0.1, 0.1, 0.1), Vector3(0.1, 0.1, 0.1));
         graph->add(BetweenFactor<imuBias::ConstantBias>(B(correction_count-1), 
                                                       B(correction_count  ), 
-                                                      zero_bias, bias_noise_model));
+                                                      small_bias, bias_noise_model));
 
         MotionModel_factor MotionModel_factor_(X(correction_count-1), 
-                                                        X(correction_count  ),V(correction_count - 1), delta_clock_CVM, noiseModel::Isotropic::Sigma(3,5));
+                                                        X(correction_count  ),V(correction_count-1), delta_clock_CVM, noiseModel::Isotropic::Sigma(3,5));
         graph->add(MotionModel_factor_);
       }
 
