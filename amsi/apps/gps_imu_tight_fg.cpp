@@ -115,7 +115,7 @@ using symbol_shorthand::S; // switch factor
 bool enable_IMUPreintegration_factor = 0; // enable imu pre-integration factor 
 bool enable_Pr_factor = 1; //enable pseudorange factor
 bool enbale_CVM_factor = 1; // enable constant velocity factor
-bool enbale_SCP_factor = 1; // enable switchable constraint pseudorange factor
+bool enbale_SCP_factor = 0; // enable switchable constraint pseudorange factor
 bool enable_GNSS_loose_factor = 0; // enbale GNSS loose factor (use WLS solution)
 bool enable_IMU_LINEAR_factor = 0; // enable imu linear factor (similar to ekf)
 
@@ -159,10 +159,12 @@ ros::Publisher span_odom_pub;
 
 nlosExclusion::GNSS_Raw_Array _GNSS_data; // save the GNSS data 
 
-Point3 nomXYZ(-2418954.90428,5384679.60663,2407391.40139); // niutoujiao data
+// Point3 nomXYZ(-2418954.90428,5384679.60663,2407391.40139); // niutoujiao data
 // Point3 nomXYZ(-2417729.42895,5384849.60804,2408314.07879); // initial position : kowlontoon data
 // Point3 nomXYZ(0, 0, 0); // niutoujiao data
 // Point3 nomXYZ(-2419091.11542, 5385376.36368, 2405705.64485); // whomopo
+Point3 nomXYZ(-2418788.21085 ,5385490.75232 ,2405751.41425 ); // honkon
+//
 
 double prediction_pre_t=0;
 
@@ -1297,7 +1299,7 @@ int main(int argc, char* argv[])
   initial_values.insert(C(correction_count), prior_cb);  
   if(enbale_SCP_factor)
   {
-    initial_values.insert(S(correction_count), sw_prior);  
+    initial_values.insert(S(switchable_count), sw_prior);  
   }
  
 
@@ -1327,7 +1329,7 @@ int main(int argc, char* argv[])
   graph->add(PriorFactor<Point2>(C(correction_count), prior_cb,cb_noise_model)); // add prior for clock bias factor
    if(enbale_SCP_factor)
   {
-    graph->add(PriorFactor<SwitchVariableLinear>(S(correction_count), sw_prior,sw_noise_model)); // add prior for switchable factor
+    graph->add(PriorFactor<SwitchVariableLinear>(S(switchable_count), sw_prior,sw_noise_model)); // add prior for switchable factor
   }
   
   // We use the sensor specs to build the noise model for the IMU factor.
@@ -1583,8 +1585,17 @@ int main(int argc, char* argv[])
 
       // boost::shared_ptr<PriorFactor <Point2> > cbPrior(
       //                   new PriorFactor<Point2>(C(correction_count), prev_cb, cb_noise_model));
+      switchable_count++;
 
-      
+      if(enbale_SCP_factor)
+      {
+        graph->add(PriorFactor<SwitchVariableLinear>(S(switchable_count), sw_prior,sw_noise_model)); // add prior for switchable factor
+        // initial_values.insert(S(correction_count),SwitchVariableLinear(sw_prior)); // switchable factor
+        SwitchVariableLinear between_sw(0);
+        // graph->add(BetweenFactor<SwitchVariableLinear>(S(switchable_count-1), 
+        //                                                 S(switchable_count), 
+        //                                                 between_sw, sw_noise_model));
+      }
 
       if(enable_Pr_factor)
       {
@@ -1598,10 +1609,15 @@ int main(int argc, char* argv[])
        if(enbale_SCP_factor)
       {
          /***********switchable constraint****************/
-        PseudorangeSwitchFactor PseudorangeSwitch_Factor(X(correction_count), C(correction_count), S(correction_count),range, satXYZ, sv_prn, nomXYZ, noiseModel::Diagonal::Sigmas( (gtsam::Vector(1) << SV_weight).finished()));
+        PseudorangeSwitchFactor PseudorangeSwitch_Factor(X(correction_count), C(correction_count), S(switchable_count),range, satXYZ, sv_prn, nomXYZ, noiseModel::Diagonal::Sigmas( (gtsam::Vector(1) << SV_weight).finished()));
         graph->add(PseudorangeSwitch_Factor);
       }
      
+       if(enbale_SCP_factor)
+      {
+        initial_values.insert(S(switchable_count), sw_prior);  
+      }
+
     }
       
 
@@ -1610,13 +1626,6 @@ int main(int argc, char* argv[])
       // graph->add(BetweenFactor<Point2>(C(correction_count-1), 
       //                                                 C(correction_count  ), 
       //                                                 zero_cb, cb_noise_model));
-      
-      
-      if(enbale_SCP_factor)
-      {
-        graph->add(PriorFactor<SwitchVariableLinear>(S(correction_count), sw_prior,sw_noise_model)); // add prior for switchable factor
-        // initial_values.insert(S(correction_count),SwitchVariableLinear(sw_prior)); // switchable factor
-      }
       
       // Now optimize and compare results.
       prop_state = imu_preintegrated_->predict(prev_state, prev_bias);

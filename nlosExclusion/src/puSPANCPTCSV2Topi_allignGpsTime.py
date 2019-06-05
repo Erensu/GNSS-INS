@@ -123,7 +123,9 @@ class csv2Topi():
         #                                 'r'))  # read csv context to csv_reader variable
         # self.Fcsv_GNSS = csv.reader(open('/home/wenws/CV_GNSS/src/ros_skymask/ivactuator/data/sv_data20181206.csv',
         #                                 'r'))  # read csv context to csv_reader variable
-        self.Fcsv_GNSS = csv.reader(open('/media/wenws/TOSHIBA EXT/insidegnss/sv_data20190326.csv',
+        # self.Fcsv_GNSS = csv.reader(open('/media/wenws/TOSHIBA EXT/insidegnss/sv_data20190326.csv',
+        #                                 'r'))  # read csv context to csv_reader variable
+        self.Fcsv_GNSS = csv.reader(open('/home/wenws/Downloads/whhomkon/sv_data.csv',
                                         'r'))  # read csv context to csv_reader variable
         for rowCsv in self.Fcsv_GNSS:
             if(rowCsv[0] == 'gps_tow(sec)'):
@@ -166,8 +168,12 @@ if __name__ == '__main__':
     # csv2Topi_.fastReadCSV(204102000,204250000) # inside gnss small loop 1
     # csv2Topi_.fastReadCSV(204255000,204429000) # inside gnss small loop 2
 
-    csv2Topi_.fastReadCSV(204437000,204801000) # inside gnss large loop 1
+    # csv2Topi_.fastReadCSV(204437000,204801000) # inside gnss large loop 1
     # csv2Topi_.fastReadCSV(204824000,205131000) # inside gnss large loop 2
+
+    # csv2Topi_.fastReadCSV(33605000,33865000) # HH data 20190331
+    csv2Topi_.fastReadCSV(33350000,33500000) # whomopo data 20190331
+    
     rate = rospy.Rate(0.01)  # 1hz
     while not rospy.is_shutdown():
         hello_str = "current time is %s" % rospy.get_time()

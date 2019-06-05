@@ -1,4 +1,4 @@
-### Localization package (This package is still under development)
+### Localization package (Be noted that this package is still under development)
 
 This package seeks to provide navigation solution in diverse scenarios using different sensors, with:
 ## Expected Capabilities (under development)
@@ -17,11 +17,16 @@ This package seeks to provide navigation solution in diverse scenarios using dif
    - rtklibros- rtklib in ros package [rtklib](https://github.com/tomojitakasu/RTKLIB)
    - Mapping- LiDAR mapping and its integration with GNSS (in local frame) (SLAM)
 
-## Currently support
+## Currently developing (the orientation is directly from AHRS)
 - loosely coupled GNSS/INS integration using EKF at [here](https://github.com/weisongwen/GNSS-INS/blob/master/amsi/apps/gps_imu_loose_ekf.cpp).
 - tightly coupled GNSS/INS integration using EKF at [here](https://github.com/weisongwen/GNSS-INS/blob/master/amsi/apps/gps_imu_tight_ekf.cpp).
 - loosely coupled GNSS/INS integration using factor graph at [here](https://github.com/weisongwen/GNSS-INS/blob/master/amsi/apps/gps_imu_loose_fg.cpp).
 - tightly coupled GNSS/INS integration using factor graph at here (to be developed).
+
+## Notice
+
+Be noted that: the applied INS is a 9-axis AHRS product (magnetic, accelerametor, gyroscope). The orientation is directly from AHRS transform acc
+from body to local frame. Transformation refer to "Groves, P. D. (2013). Principles of GNSS, inertial, and multisensor integrated navigation systems. Artech house.".
 
 ## How to use this for your data
 
